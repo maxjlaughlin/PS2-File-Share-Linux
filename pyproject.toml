@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ps2share"
+version = "1.0.0"
+description = "Share a folder of PS2 games over SMB so Open PS2 Loader can see it, with live bandwidth and connection monitoring."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = ["ps2", "playstation2", "opl", "open-ps2-loader", "samba", "smb", "fileshare"]
+classifiers = [
+  "Environment :: Web Environment",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Networking",
+]
+dependencies = []
+
+[project.scripts]
+ps2share = "ps2share.__main__:main"
+
+[tool.setuptools]
+packages = ["ps2share"]
+
+[tool.setuptools.package-data]
+ps2share = ["static/*"]

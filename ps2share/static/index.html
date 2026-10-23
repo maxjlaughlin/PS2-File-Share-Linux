@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>PS2 File Share</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M7 21h18M11 11h10v6H11z' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<!-- ───────────────────────── sign in ───────────────────────── -->
+<div id="login" class="overlay" hidden>
+  <form class="card login-card" id="login-form">
+    <h1 class="login-title">PS2 File Share</h1>
+    <p class="muted">This interface is password protected.</p>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" id="login-password" autocomplete="current-password" required>
+    </label>
+    <p class="error" id="login-error" hidden></p>
+    <button class="btn primary" type="submit">Sign in</button>
+  </form>
+</div>
+
+<!-- ───────────────────────── chrome ───────────────────────── -->
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7"/>
+      <path d="M7 21h18M11 11h10v6H11z" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <div class="brand-name">PS2 File Share</div>
+      <div class="brand-sub" id="brand-sub">Open PS2 Loader over SMB</div>
+    </div>
+  </div>
+  <div class="pills" id="status-pills"></div>
+  <div class="topbar-actions">
+    <button class="icon-btn" id="theme-toggle" title="Switch theme" aria-label="Switch theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.5-6.5L16 7M8 16l-1.5 1.5m11 0L16 16M8 8L6.5 6.5" stroke-width="1.8" stroke-linecap="round" fill="none"/><circle cx="12" cy="12" r="4" fill="none" stroke-width="1.8"/></svg>
+    </button>
+    <button class="icon-btn" id="signout" title="Sign out" aria-label="Sign out" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M10 12h11m0 0-3-3m3 3-3 3" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" data-tab="dashboard" class="tab active">Dashboard</button>
+  <button role="tab" data-tab="share" class="tab">Share</button>
+  <button role="tab" data-tab="games" class="tab">Games</button>
+  <button role="tab" data-tab="usage" class="tab">Usage</button>
+  <button role="tab" data-tab="advanced" class="tab">Advanced</button>
+</nav>
+
+<div id="warnings" class="warnings"></div>
+
+<main id="main">
+
+<!-- ───────────────────────── dashboard ───────────────────────── -->
+<section id="tab-dashboard" class="tabpanel active">
+
+  <div class="tiles" id="tiles">
+    <div class="card tile">
+      <div class="tile-label">Right now</div>
+      <div class="hero" id="tile-rate">0 B<span class="hero-unit">/s</span></div>
+      <div class="tile-sub" id="tile-rate-sub">idle</div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Consoles connected</div>
+      <div class="hero" id="tile-clients">0</div>
+      <div class="tile-sub" id="tile-clients-sub">no active connections</div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Transferred today</div>
+      <div class="hero" id="tile-today">0 B</div>
+      <div class="tile-sub" id="tile-today-sub">since midnight</div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Free space</div>
+      <div class="hero" id="tile-free">—</div>
+      <div class="tile-sub" id="tile-free-sub">pick a folder first</div>
+    </div>
+  </div>
+
+  <div class="card chart-card">
+    <div class="card-head">
+      <div>
+        <h2>Throughput</h2>
+        <p class="muted" id="chart-window">last 5 minutes</p>
+      </div>
+      <div class="card-head-right">
+        <div class="legend" id="throughput-legend"></div>
+        <button class="btn ghost small" id="throughput-table-toggle" aria-pressed="false">Table</button>
+      </div>
+    </div>
+    <div class="chart-wrap" id="throughput-wrap">
+      <svg id="throughput" role="img" aria-label="Live network throughput to and from the PS2"></svg>
+      <div class="tooltip" id="throughput-tip" hidden></div>
+    </div>
+    <div class="table-view" id="throughput-table" hidden></div>
+    <p class="chart-note muted" id="monitor-source"></p>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Active connections</h2>
+        <p class="muted">What each console is doing right now.</p>
+      </div>
+    </div>
+    <div id="connections"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Connect your PS2</h2>
+        <p class="muted">Type these into Open PS2 Loader, then choose Reconnect.</p>
+      </div>
+    </div>
+    <div id="opl-settings"></div>
+  </div>
+
+</section>
+
+<!-- ───────────────────────── share ───────────────────────── -->
+<section id="tab-share" class="tabpanel">
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Shared folder</h2>
+        <p class="muted">The folder your PS2 reads games from.</p>
+      </div>
+    </div>
+    <div class="folder-row">
+      <code class="folder-path" id="current-folder">(not set)</code>
+      <button class="btn" id="choose-folder">Choose folder…</button>
+    </div>
+    <div id="folder-health"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Share settings</h2>
+        <p class="muted">OPL needs the share name to match exactly.</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <label class="field">
+        <span>Share name</span>
+        <input type="text" id="share-name" maxlength="32" spellcheck="false">
+        <small class="muted">OPL's default is <code>PS2SMB</code>. Whatever you put here has to be typed into the console.</small>
+      </label>
+      <label class="field">
+        <span>Workgroup</span>
+        <input type="text" id="workgroup" maxlength="32" spellcheck="false">
+        <small class="muted">Almost always <code>WORKGROUP</code>.</small>
+      </label>
+    </div>
+
+    <fieldset class="field">
+      <legend>Who can connect</legend>
+      <label class="radio">
+        <input type="radio" name="access" value="guest" id="access-guest">
+        <span>
+          <strong>Anyone on my network (guest)</strong>
+          <small class="muted">Simplest, and what most OPL setups use. No password to type on the console.</small>
+        </span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="access" value="user" id="access-user">
+        <span>
+          <strong>Require a username and password</strong>
+          <small class="muted">Use this if other people share your network.</small>
+        </span>
+      </label>
+    </fieldset>
+
+    <div id="user-fields" class="grid2" hidden>
+      <label class="field">
+        <span>Username</span>
+        <input type="text" id="smb-username" autocomplete="off" spellcheck="false">
+        <label class="check"><input type="checkbox" id="create-user"> <span>Create this Linux account if it doesn't exist</span></label>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" id="smb-password" autocomplete="new-password" placeholder="leave blank to keep the current one">
+        <small class="muted">Stored by Samba, never by this app.</small>
+      </label>
+    </div>
+
+    <label class="check">
+      <input type="checkbox" id="writable">
+      <span>Let the PS2 write to the share <small class="muted">— needed for virtual memory cards and OPL's own settings.</small></span>
+    </label>
+
+    <div class="actions">
+      <button class="btn primary" id="apply-share">Apply &amp; start sharing</button>
+      <button class="btn ghost" id="create-folders">Create OPL folders</button>
+      <button class="btn ghost" id="fix-permissions">Fix permissions</button>
+    </div>
+    <div id="share-result"></div>
+  </div>
+
+</section>
+
+<!-- ───────────────────────── games ───────────────────────── -->
+<section id="tab-games" class="tabpanel">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>What OPL will see</h2>
+        <p class="muted" id="games-summary">—</p>
+      </div>
+      <button class="btn ghost small" id="rescan">Rescan</button>
+    </div>
+    <div id="games-folders" class="folder-chips"></div>
+    <div id="games-list"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Virtual memory cards</h2>
+        <p class="muted">Files in <code>VMC/</code>. OPL creates these itself when you enable a VMC for a game.</p>
+      </div>
+    </div>
+    <div id="vmc-list"></div>
+  </div>
+</section>
+
+<!-- ───────────────────────── usage ───────────────────────── -->
+<section id="tab-usage" class="tabpanel">
+  <div class="tiles">
+    <div class="card tile"><div class="tile-label">Today</div><div class="hero" id="usage-today">0 B</div><div class="tile-sub">since midnight</div></div>
+    <div class="card tile"><div class="tile-label">Last 7 days</div><div class="hero" id="usage-week">0 B</div><div class="tile-sub">rolling</div></div>
+    <div class="card tile"><div class="tile-label">Last 30 days</div><div class="hero" id="usage-month">0 B</div><div class="tile-sub">rolling</div></div>
+    <div class="card tile"><div class="tile-label">All time</div><div class="hero" id="usage-all">0 B</div><div class="tile-sub" id="usage-all-sub">since first run</div></div>
+  </div>
+
+  <div class="card chart-card">
+    <div class="card-head">
+      <div>
+        <h2>Daily transfer</h2>
+        <p class="muted">Bytes moved between the server and your consoles.</p>
+      </div>
+      <button class="btn ghost small" id="daily-table-toggle" aria-pressed="false">Table</button>
+    </div>
+    <div class="chart-wrap tall" id="daily-wrap">
+      <svg id="daily" role="img" aria-label="Daily transfer volume"></svg>
+      <div class="tooltip" id="daily-tip" hidden></div>
+    </div>
+    <div class="table-view" id="daily-table" hidden></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>By console</h2><p class="muted">Each device that has connected recently.</p></div></div>
+    <div id="usage-clients"></div>
+  </div>
+</section>
+
+<!-- ───────────────────────── advanced ───────────────────────── -->
+<section id="tab-advanced" class="tabpanel">
+
+  <div class="card">
+    <div class="card-head"><div><h2>Samba service</h2><p class="muted" id="samba-detail">—</p></div></div>
+    <div class="actions">
+      <button class="btn" data-service="start">Start</button>
+      <button class="btn" data-service="restart">Restart</button>
+      <button class="btn" data-service="reload">Reload config</button>
+      <button class="btn danger" data-service="stop">Stop</button>
+      <button class="btn danger ghost" id="unshare">Remove the PS2 share</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Compatibility</h2><p class="muted">Only change these if your console refuses to connect.</p></div></div>
+    <label class="check"><input type="checkbox" id="opt-lanman"> <span>Allow LANMAN authentication <small class="muted">— for very old OPL builds. Weaker; leave off unless nothing else works.</small></span></label>
+    <label class="check"><input type="checkbox" id="opt-smb1only"> <span>SMB1 only <small class="muted">— stops Windows, phones and Macs from using this server at all. Off means they keep working alongside the PS2.</small></span></label>
+    <label class="check"><input type="checkbox" id="opt-netbios"> <span>Also listen on port 139 <small class="muted">— some older OPL builds connect here instead of 445.</small></span></label>
+    <label class="check"><input type="checkbox" id="opt-tuned"> <span>Throughput tuning <small class="muted">— sendfile, async I/O and TCP_NODELAY. Leave on.</small></span></label>
+    <label class="check"><input type="checkbox" id="opt-widelinks"> <span>Follow symlinks out of the shared folder <small class="muted">— lets you keep games on other disks and link them in. Turn off if you do not trust everyone who can reach the share.</small></span></label>
+    <div class="actions"><button class="btn primary" id="save-compat">Save &amp; reload Samba</button></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Firewall</h2><p class="muted" id="firewall-detail">—</p></div></div>
+    <div id="firewall-body"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Web interface password</h2><p class="muted">Protects this page. It runs as root, so set one.</p></div></div>
+    <div class="grid2">
+      <label class="field"><span>Current password</span><input type="password" id="ui-current" autocomplete="current-password" placeholder="(none set)"></label>
+      <label class="field"><span>New password</span><input type="password" id="ui-new" autocomplete="new-password" placeholder="blank to remove"></label>
+    </div>
+    <div class="actions"><button class="btn primary" id="save-ui-password">Save password</button></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div><h2>Generated Samba config</h2><p class="muted" id="preview-path">—</p></div>
+      <button class="btn ghost small" id="copy-config">Copy</button>
+    </div>
+    <pre class="code" id="config-preview">—</pre>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>Logs</h2><p class="muted" id="log-source">—</p></div><button class="btn ghost small" id="refresh-logs">Refresh</button></div>
+    <pre class="code scroll" id="log-text">—</pre>
+    <h3 class="subhead">Recent activity</h3>
+    <div id="event-list"></div>
+  </div>
+
+</section>
+</main>
+
+<!-- ───────────────────────── folder picker ───────────────────────── -->
+<div id="picker" class="overlay" hidden>
+  <div class="card picker-card">
+    <div class="card-head">
+      <div><h2>Choose a folder</h2><p class="muted" id="picker-disk">—</p></div>
+      <button class="icon-btn" id="picker-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="picker-suggestions" id="picker-suggestions"></div>
+    <div class="crumbs" id="picker-crumbs"></div>
+    <div class="picker-list" id="picker-list"></div>
+    <div class="picker-foot">
+      <input type="text" id="picker-new" placeholder="New folder name" spellcheck="false">
+      <button class="btn ghost" id="picker-mkdir">Create</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="picker-use">Use this folder</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
