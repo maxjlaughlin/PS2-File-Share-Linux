@@ -25,6 +25,20 @@ info()  { printf '  %s\n' "$*"; }
 warn()  { printf '\033[33m  ! %s\033[0m\n' "$*"; }
 fail()  { printf '\033[31m  ✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
+# Ask a yes/no question. Falls back to the default when there is no terminal
+# (piped into bash, run from a provisioning tool), instead of erroring out.
+ask() {
+  local prompt="$1" default="$2" reply=""
+  # /dev/tty can exist and still fail to open (no controlling terminal), and
+  # bash reports that before any 2>/dev/null on the read would apply — so
+  # probe it inside a subshell whose stderr is already discarded.
+  if ( exec < /dev/tty ) 2>/dev/null; then
+    read -r -p "$prompt" reply < /dev/tty || reply=""
+  fi
+  [ -n "$reply" ] || reply="$default"
+  case "$reply" in [Yy]*) return 0 ;; *) return 1 ;; esac
+}
+
 [ "$(id -u)" -eq 0 ] || fail "Run this with sudo."
 
 bold "PS2 File Share — install"
@@ -51,11 +65,11 @@ else
   else INSTALL=""
   fi
   if [ -n "$INSTALL" ]; then
-    read -r -p "    Install it now with '$INSTALL'? [Y/n] " reply </dev/tty || reply=n
-    case "${reply:-Y}" in
-      [Yy]*) $INSTALL ;;
-      *)     warn "Skipped — install Samba yourself before using the app." ;;
-    esac
+    if ask "    Install it now with '$INSTALL'? [Y/n] " Y; then
+      $INSTALL
+    else
+      warn "Skipped — install Samba yourself before using the app."
+    fi
   else
     warn "Unknown package manager — install the 'samba' package yourself."
   fi
@@ -90,18 +104,23 @@ if [ -f "$SOURCE_DIR/systemd/ps2share.service" ]; then
 fi
 
 # ── service ───────────────────────────────────────────────────────────
-if command -v systemctl >/dev/null 2>&1 && [ -f "$UNIT" ]; then
-  systemctl daemon-reload
+# /run/systemd/system only exists when systemd is actually PID 1 — `systemctl`
+# is present in plenty of containers where it cannot do anything.
+if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1 && [ -f "$UNIT" ]; then
+  systemctl daemon-reload || true
   systemctl enable ps2share.service >/dev/null 2>&1 || true
-  systemctl restart ps2share.service
-  sleep 1
+  if systemctl restart ps2share.service >/dev/null 2>&1; then
+    sleep 1
+  fi
   if systemctl is-active --quiet ps2share.service; then
     info "service started and enabled at boot"
   else
     warn "the service did not start — check: journalctl -u ps2share -n 40"
   fi
 else
-  warn "No systemd here. Start it yourself with: ps2share serve"
+  rm -f "$UNIT"
+  warn "systemd is not running here, so no service was installed."
+  warn "Start it yourself with:  ps2share serve"
 fi
 
 # ── where to go next ──────────────────────────────────────────────────
