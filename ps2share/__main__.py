@@ -38,6 +38,15 @@ def build_parser() -> argparse.ArgumentParser:
     apply_cmd.add_argument("--smb1-only", action="store_true", help="refuse SMB2/3 from other clients")
 
     sub.add_parser("status", help="show the current share and server status")
+
+    firewall_cmd = sub.add_parser(
+        "open-firewall",
+        help="allow the web interface and SMB through this server's firewall",
+    )
+    firewall_cmd.add_argument("--network", default="", help="source range to allow, e.g. 192.168.1.0/24")
+    firewall_cmd.add_argument("--ui-only", action="store_true", help="only open the web interface port")
+    firewall_cmd.add_argument("--smb-only", action="store_true", help="only open the SMB ports")
+    firewall_cmd.add_argument("--dry-run", action="store_true", help="print the commands without running them")
     sub.add_parser("preview", help="print the Samba config that would be written")
     sub.add_parser("remove", help="remove the share from Samba")
     sub.add_parser("games", help="list the images OPL will see")
@@ -84,6 +93,8 @@ def main(argv=None) -> int:
         return 0 if outcome.ok else 1
     if command == "games":
         return _cmd_games(config)
+    if command == "open-firewall":
+        return _cmd_open_firewall(config, args)
     if command == "set-ui-password":
         return _cmd_ui_password(config, args)
 
@@ -182,7 +193,31 @@ def _cmd_status(config: Config) -> int:
     print(f"  Access          : {config.access_mode}")
     listening = netinfo.read_listening_ports()
     print(f"  Port 445 open   : {'yes' if 445 in listening else 'no'}")
-    print(f"  Server IP       : {netinfo.primary_ip() or 'unknown'}")
+
+    # Every address, not just the detected one: on a server with Docker, a VPN
+    # or two NICs, the address with the default route is not always the one
+    # your console or laptop can reach.
+    addresses = netinfo.interfaces()
+    print(f"  Web interface   : port {config.ui_port} "
+          f"({'listening' if config.ui_port in listening else 'NOT listening'})")
+    if addresses:
+        print("  Try reaching it on:")
+        for row in addresses:
+            tag = "  <- detected as primary" if row["primary"] else ""
+            name = f"{row['name']:<8} " if row["name"] else ""
+            print(f"      http://{row['address']}:{config.ui_port}/   {name}{row['network']}{tag}")
+    else:
+        print("  Addresses       : none found")
+
+    firewall = netinfo.firewall_state()
+    if firewall["tool"] and firewall["active"]:
+        print(f"  Firewall        : {firewall['tool']} is active")
+        print(f"      It may be blocking port {config.ui_port} and SMB.")
+        print("      Open both with: sudo ps2share open-firewall")
+    elif firewall["tool"]:
+        print(f"  Firewall        : {firewall['tool']} present but inactive")
+    else:
+        print("  Firewall        : none detected")
 
     if config.share_path:
         health = opl.share_health(
@@ -196,6 +231,54 @@ def _cmd_status(config: Config) -> int:
         if disk.get("total"):
             print(f"  Disk            : {human_bytes(disk['free'])} free of {human_bytes(disk['total'])}")
     return 0
+
+
+def _cmd_open_firewall(config: Config, args) -> int:
+    state = netinfo.firewall_state()
+    if not state["tool"]:
+        print("No managed firewall detected (no ufw, firewalld or nftables ruleset).")
+        print("If you still cannot reach the server, something upstream is filtering —")
+        print("a router, a cloud security group, or a firewall this tool does not manage.")
+        return 0
+
+    network = args.network
+    if not network:
+        primary = next((row for row in netinfo.interfaces() if row["primary"]), None)
+        network = str(primary["network"]) if primary else ""
+
+    commands = netinfo.firewall_commands(
+        network,
+        smb=not args.ui_only,
+        ui_port=0 if args.smb_only else config.ui_port,
+    )
+    if not commands:
+        print(f"Nothing to do for {state['tool']}.")
+        return 0
+
+    print(f"Firewall: {state['tool']} ({'active' if state['active'] else 'inactive'})")
+    print(f"Allowing from: {network or 'any private network'}\n")
+    for command in commands:
+        print(f"  {command}")
+    if args.dry_run:
+        print("\nDry run — nothing was changed.")
+        return 0
+
+    if not is_root():
+        print("\nChanging the firewall needs root. Re-run with sudo.", file=sys.stderr)
+        return 1
+
+    print()
+    result = netinfo.open_firewall(
+        network,
+        smb=not args.ui_only,
+        ui_port=0 if args.smb_only else config.ui_port,
+    )
+    for ran in result["ran"]:
+        print(f"  {'ok ' if ran['ok'] else 'FAILED'}  {ran['command']}")
+        if not ran["ok"] and ran["output"]:
+            print(f"         {ran['output']}")
+    print(f"\n{result['message']}")
+    return 0 if result["ok"] else 1
 
 
 def _cmd_games(config: Config) -> int:

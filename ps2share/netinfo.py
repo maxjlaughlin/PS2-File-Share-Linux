@@ -162,23 +162,44 @@ def firewall_state() -> Dict[str, object]:
     return {"tool": "", "active": False, "allows_smb": True, "detail": "No managed firewall detected."}
 
 
-def firewall_commands(source_network: str = "") -> List[str]:
-    """The exact commands to open SMB — shown to the user before anything runs."""
+def firewall_commands(source_network: str = "", *, smb: bool = True, ui_port: int = 0) -> List[str]:
+    """The exact commands to open what we need — shown before anything runs.
+
+    `ui_port` matters when this is called from the terminal: a firewall that
+    blocks the web interface cannot be opened from the web interface.
+    """
     state = firewall_state()
     scope = source_network or "192.168.0.0/16"
+    commands: List[str] = []
+
     if state["tool"] == "ufw":
-        return [f"ufw allow from {scope} to any app Samba"]
-    if state["tool"] == "firewalld":
-        return ["firewall-cmd --permanent --add-service=samba", "firewall-cmd --reload"]
-    if state["tool"] == "nftables":
-        return [
-            "nft add rule inet filter input ip saddr " + scope + " tcp dport {445, 139} accept",
-        ]
-    return []
+        if smb:
+            commands.append(f"ufw allow from {scope} to any app Samba")
+        if ui_port:
+            commands.append(f"ufw allow from {scope} to any port {ui_port} proto tcp")
+    elif state["tool"] == "firewalld":
+        if smb:
+            commands.append("firewall-cmd --permanent --add-service=samba")
+        if ui_port:
+            commands.append(f"firewall-cmd --permanent --add-port={ui_port}/tcp")
+        if commands:
+            commands.append("firewall-cmd --reload")
+    elif state["tool"] == "nftables":
+        ports = []
+        if smb:
+            ports += ["445", "139"]
+        if ui_port:
+            ports.append(str(ui_port))
+        if ports:
+            commands.append(
+                f"nft add rule inet filter input ip saddr {scope} "
+                f"tcp dport {{{', '.join(ports)}}} accept"
+            )
+    return commands
 
 
-def open_firewall(source_network: str = "") -> Dict[str, object]:
-    commands = firewall_commands(source_network)
+def open_firewall(source_network: str = "", *, smb: bool = True, ui_port: int = 0) -> Dict[str, object]:
+    commands = firewall_commands(source_network, smb=smb, ui_port=ui_port)
     if not commands:
         return {"ok": True, "message": "No managed firewall to change.", "ran": []}
     ran = []

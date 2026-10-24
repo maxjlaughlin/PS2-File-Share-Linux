@@ -108,7 +108,8 @@ sudo ps2share apply /srv/ps2games            # guest access, share name PS2SMB
 sudo ps2share apply /srv/ps2games --user ps2 # ask for a username and password
 sudo ps2share apply /mnt/games --name GAMES --read-only
 
-ps2share status                              # is it up, what is shared, is 445 open
+ps2share status                              # addresses, ports, firewall, share health
+sudo ps2share open-firewall                  # allow the web UI and SMB through
 ps2share games                               # list what OPL will see, with game IDs
 ps2share preview                             # print the Samba config without writing it
 sudo ps2share remove                         # take the share back out of Samba
@@ -133,6 +134,15 @@ connection. Over Wi-Fi via a bridge, expect less and expect stutter in FMV-heavy
 games. Nothing in software fixes that; the PS2's network adapter is the ceiling.
 
 ## When it does not work
+
+**You cannot reach the web interface at all.** Run `sudo ps2share status` on
+the server. It lists every address the server has — on a box with Docker, a
+VPN or two NICs the automatically detected one is not always the reachable
+one — says whether the port is listening, and flags an active firewall. If a
+firewall is in the way, `sudo ps2share open-firewall` opens both the web
+interface and SMB (add `--dry-run` to see the commands first). A timeout means
+packets are not arriving; "connection refused" means they arrive but nothing
+is listening, so the service is down.
 
 **OPL says it cannot connect.** Check the Dashboard pills: Samba running, port
 445 open, no firewall banner. Then check the console and the server are on the

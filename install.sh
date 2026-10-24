@@ -141,6 +141,24 @@ PY
 echo
 bold "Done."
 echo "  Open  http://$IP:$PORT/  from any machine on your network."
+
+# A firewall blocking the web interface cannot be opened from the web
+# interface, so this has to be dealt with here or from the terminal.
+FW=""
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+  FW="ufw"
+elif command -v firewall-cmd >/dev/null 2>&1 && [ "$(firewall-cmd --state 2>/dev/null)" = "running" ]; then
+  FW="firewalld"
+fi
+if [ -n "$FW" ]; then
+  echo
+  warn "$FW is active and will probably block port $PORT and SMB."
+  if ask "    Allow them through now? [Y/n] " Y; then
+    "$BIN" open-firewall || warn "could not change the firewall — run 'sudo ps2share open-firewall' yourself"
+  else
+    warn "Run this when you are ready:  sudo ps2share open-firewall"
+  fi
+fi
 echo
 echo "  Set a password for that page first:   sudo ps2share set-ui-password"
 echo "  Or skip the web UI entirely:          sudo ps2share apply /path/to/games"
